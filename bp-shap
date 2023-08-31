@@ -1,0 +1,77 @@
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+import tensorflow as tf
+import shap
+import pandas as pd 
+import matplotlib.pyplot as plt
+
+# Import data
+data = pd.read_excel(r'File path')
+X = data.iloc[:, :25].values
+y = data.iloc[:, -1].values
+
+# Split into training and test sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=0)
+
+# Normalize data
+X_scaler = MinMaxScaler(feature_range=(0, 1))
+y_scaler = MinMaxScaler(feature_range=(0, 1))  # separate scaler for y
+
+X_train = X_scaler.fit_transform(X_train)
+X_test = X_scaler.transform(X_test)
+y_train = y_scaler.fit_transform(y_train.reshape(-1, 1))  # apply y_scaler to y_train
+y_test = y_scaler.transform(y_test.reshape(-1, 1))  # apply y_scaler to y_test
+
+# Create neural network model using Functional API
+inputs = tf.keras.layers.Input(shape=(25,))
+x = tf.keras.layers.Dense(5, activation='relu')(inputs)
+outputs = tf.keras.layers.Dense(1)(x)
+model = tf.keras.Model(inputs=inputs, outputs=outputs)
+
+# Compile model
+model.compile(loss='mean_squared_error', optimizer='adam')
+
+# Train network
+model.fit(X_train, y_train, epochs=1000, verbose=0)
+
+# Add SHAP module
+explainer = shap.DeepExplainer(model, X_train)
+
+# Calculate SHAP values
+shap_values = explainer.shap_values(X_train)
+
+# Plot summary of SHAP values for all samples
+shap.summary_plot(shap_values, X_train)
+shap.summary_plot(shap_values[0], X_train, plot_type='dot')
+# Plot force plot
+shap.force_plot(explainer.expected_value[0], shap_values[0][0,:], X_train[0,:]) 
+# Plot dependence plot
+shap.dependence_plot(0, shap_values[0], X_train, interaction_index=None)
+# Make predictions
+y_train_pred = model.predict(X_train)
+y_test_pred = model.predict(X_test)
+
+# Inverse normalization
+y_train_pred = y_scaler.inverse_transform(y_train_pred)  # apply inverse_transform of y_scaler
+y_test_pred = y_scaler.inverse_transform(y_test_pred)  # apply inverse_transform of y_scaler
+
+# Calculate error metrics
+train_mse = np.mean((y_train_pred - y_train)**2)
+test_mse = np.mean((y_test_pred - y_test)**2)
+train_r2 = 1 - train_mse / np.var(y_train)
+test_r2 = 1 - test_mse / np.var(y_test)
+train_mae = np.mean(np.abs(y_train_pred - y_train))
+test_mae = np.mean(np.abs(y_test_pred - y_test))
+train_mbe = np.mean(y_train_pred - y_train)
+test_mbe = np.mean(y_test_pred - y_test)
+
+# Print output
+print("Training set Mean Squared Error (MSE):", train_mse)
+print("Test set Mean Squared Error (MSE):", test_mse)
+print("Training set Coefficient of Determination (R2):", train_r2)
+print("Test set Coefficient of Determination (R2):", test_r2)
+print("Training set Mean Absolute Error (MAE):", train_mae)
+print("Test set Mean Absolute Error (MAE):", test_mae)
+print("Training set Mean Bias Error (MBE):", train_mbe)
+print("Test set Mean Bias Error (MBE):", test_mbe)
